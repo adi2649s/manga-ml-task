@@ -1,0 +1,1 @@
+# Manga task package

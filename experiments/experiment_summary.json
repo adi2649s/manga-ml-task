@@ -1,0 +1,69 @@
+{
+  "split": {
+    "train_sequences": 64,
+    "val_sequences": 16,
+    "train_pages": 192,
+    "val_pages": 48
+  },
+  "component_validation_metrics": {
+    "story_text_classifier_val_auroc": 0.9865156418554477,
+    "story_text_classifier_val_f1": 0.9008363201911589,
+    "reading_order_ranker_pairwise_val_acc": 0.8599476439790575,
+    "reading_order_ranker_pairwise_val_auroc": 0.9064398819476805,
+    "narration_classifier_val_auroc": 0.9204826732673267,
+    "speaker_coref_pairwise_val_auroc": 0.5572709781040832,
+    "tuned_story_threshold": 0.58
+  },
+  "validation_ablations_16_sequences": {
+    "01_unmodified_fullpage_ocr_baseline": {
+      "text_order_score": 0.36001321091528904,
+      "balanced_joint_f1": 0.11423293497062346,
+      "speaker_accuracy_on_matched": 0.5889023200037656,
+      "joint_f1": 0.2628550481051056,
+      "matched_token_coverage": 0.3661877147243094
+    },
+    "02_heuristic_bubbles_single_speaker": {
+      "text_order_score": 0.6856804126817265,
+      "balanced_joint_f1": 0.18037415582058883,
+      "speaker_accuracy_on_matched": 0.543646423076765,
+      "joint_f1": 0.4298944265352845,
+      "matched_token_coverage": 0.6918524666027933
+    },
+    "03_learned_story_classifier_single_speaker": {
+      "text_order_score": 0.6935624558310312,
+      "balanced_joint_f1": 0.1768320597190103,
+      "speaker_accuracy_on_matched": 0.5541359588564497,
+      "joint_f1": 0.4382641318940148,
+      "matched_token_coverage": 0.7668720367417035
+    },
+    "04_learned_story_plus_learned_order_ranker": {
+      "text_order_score": 0.6897541903845936,
+      "balanced_joint_f1": 0.1755859440041642,
+      "speaker_accuracy_on_matched": 0.5530047840473861,
+      "joint_f1": 0.4352464003385489,
+      "matched_token_coverage": 0.7663283966206789
+    },
+    "05_plus_narration_and_spatial_clustering": {
+      "text_order_score": 0.6897541903845936,
+      "balanced_joint_f1": 0.2713534146707065,
+      "speaker_accuracy_on_matched": 0.4845443160617087,
+      "joint_f1": 0.37756119598050386,
+      "matched_token_coverage": 0.7663283966206789
+    },
+    "06_full_adapted_pipeline": {
+      "text_order_score": 0.6897541903845936,
+      "balanced_joint_f1": 0.2912434039616318,
+      "speaker_accuracy_on_matched": 0.5649536790093136,
+      "joint_f1": 0.4372451260955248,
+      "matched_token_coverage": 0.7663283966206789
+    }
+  },
+  "five_fold_cv_macro_80_sequences": {
+    "text_order_score": 0.7101412308814978,
+    "balanced_joint_f1": 0.3051215293202985,
+    "speaker_accuracy_on_matched": 0.5965535946307824,
+    "joint_f1": 0.4587786867760451,
+    "matched_token_coverage": 0.7771026781540324
+  },
+  "runtime_seconds": 76.51
+}
