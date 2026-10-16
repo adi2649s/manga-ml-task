@@ -1,174 +1,226 @@
-# The Manga Task [Advanced] — Open-Weight Manga Transcription & Speaker Attribution Pipeline
+# The Manga Task [Advanced] – Open-Weight Manga Transcription & Speaker Attribution Pipeline
 
-## Overview
+Overview
 
-This repository implements an end-to-end, fully local open-weight pipeline that reads three-page English manga sequences, segments dialogue/thought balloons and narration boxes, splits compound multi-lobe speech bubbles, filters out non-story text (SFX, page numbers, character introduction tags, background signage, documents/interfaces), orders story lines in right-to-left panel-aware reading order, and assigns speaker identities (`NARRATION`, `character1`, `character2`, ...) across all three pages in each sequence.
+This repo performs an end-to-end, fully local, open-weight pipeline that: extracts three-page sequences of english manga, detects/segments dialogue or thought balloons/narration boxes, splits compound multi-lobe speech balloons, filters out all non-story text (SFX, number of page, tags for introduction of character, background signage, documents, interfaces, etc.), orders the story line into a right-to-left, panel aware reading order, and makes any name-entity classification (NARRATION, character1, character2,...) across all three pages of each sequence.
 
-No hosted AI inference APIs are used anywhere in data preparation, training, or test prediction. All components run locally using open-source tools and open-weight models (**Tesseract 5.5.3 LSTM OCR**, **OpenCV**, **PyTorch**, **scikit-learn**, and **SciPy**).
+No hosted AI inference APIs are used in any step, including preparing the data, during training, or test prediction. Everything is run locally using open-source solutions and open-weight models, specifically: Tesseract 5.5.3 LSTM OCR, OpenCV, PyTorch, scikit-learn, and SciPy.
 
-## Environment Setup & Dataset Placement (Reproducibility)
+Environment Setup & Placement of Dataset (Reproducibility)
 
-### 1. System & Python Dependencies
-Install the Tesseract OCR engine (`eng.traineddata` is included with standard Tesseract installations) and the Python dependencies listed in `requirements.txt`:
+# 1. System & Python Dependencies
 
-```bash
+Require the Tesseract OCR engine (eng.traineddata is included in most Tesseract distributions) and the Python dependencies in requirements.txt:
+
+``bash
+
 # macOS (Homebrew)
+
 brew install tesseract
 
 # Ubuntu / Debian
+
 # sudo apt-get update && sudo apt-get install -y tesseract-ocr
 
-# Python packages (Python 3.10+)
+# Required python packages (Python 3.10+)
+
 python3 -m pip install -r requirements.txt
-```
 
-The code locates `tesseract` automatically via `shutil.which("tesseract")` (or you can override it via `export TESSERACT_BIN=/path/to/tesseract`).
+`
 
-### 2. Expected Dataset Directory Layout
-Place the supplied dataset files either directly in the project root directory or inside a `dataset/` subdirectory (`resolve_data_path()` in `src/features.py` supports both layouts automatically):
+Finds tesseract executable automatically with shutil.which("tesseract") (or override it by export TESSERACT_BIN=/path/to/tesseract)
 
-```text
+# 2. Expected Dataset Directory Layout
+
+Unpack the dataset files you received in the root directory of your project or inside a dataset/ subdirectory (resolvedatapath() in src/features.py takes care of both patterns automatically):
+
+`text
+
 project_root/
-├── requirements.txt
-├── README.md
-├── score.py
-├── sequences.json                 # (or dataset/sequences.json)
-├── sample_submission.jsonl        # (or dataset/sample_submission.jsonl)
-├── development/                   # (or dataset/development/)
-│   ├── labels.jsonl
-│   └── images/
-│       └── seq_<id>/
-│           ├── 01.png
-│           ├── 02.png
-│           └── 03.png
-├── test/                          # (or dataset/test/)
-│   └── images/
-│       └── seq_<id>/
-│           ├── 01.png
-│           ├── 02.png
-│           └── 03.png
-├── src/
-│   ├── __init__.py
-│   ├── features.py
-│   └── models.py
-├── train_and_evaluate.py
-├── predict_test.py
-├── models/
-│   ├── story_mlp_weights.pt
-│   └── trained_pipeline.pkl
-├── experiments/
-│   ├── experiment_summary.json
-│   ├── val_predictions.jsonl
-│   ├── val_scores_full.json
-│   ├── oof_predictions.jsonl
-│   └── oof_scores.json
-├── scores.json
-├── test_predictions.jsonl
-└── submission.jsonl
-```
 
-### 3. Running Inference, Training & Scoring
+requirements.txt
 
-```bash
-# Run standalone inference on the 15 test sequences using the saved checkpoint
-python3 predict_test.py --sequences sequences.json --sample-submission sample_submission.jsonl --output test_predictions.jsonl
+README.md
 
-# Extract features and cache OCR candidates from scratch across all 285 pages
+score.py
+
+sequences.json # (or dataset/sequences.json)
+
+Samplesubmission.jsonl or dataset/samplesubmission.jsonl
+
+development/ # (or dataset/development/)
+
+labels.jsonl
+
+images/
+
+seq_<id>/
+
+01.png
+
+02.png
+
+03.png
+
+Test/# (or dataset/test/)
+
+images/
+
+seq_<id>/
+
+01.png
+
+02.png
+
+03.png
+
+src/
+
+init.py
+
+features.py
+
+models.py
+
+trainandevaluate.py
+
+predict_test.py
+
+models/
+
+storymlpweights.pt
+
+trained_pipeline.pkl
+
+experiments/
+
+experiment_summary.json
+
+val_predictions.jsonl
+
+valscoresfull.json
+
+oof_predictions.jsonl
+
+oof_scores.json
+
+scores.json
+
+test_predictions.jsonl
+
+submission.jsonl
+
+`
+
+# 3. Running Inference, Training & Scoring
+
+`bash
+
+# Run standalone inference on the 15 test sequences (checkpoint has been saved)
+
+Python3 predicttest.py --sequences.json --sample-submission samplesubmission.jsonl --output test_predictions.jsonl
+
+# Re-compute features and cache OCR candidates across all 285 pages
+
 python3 src/features.py
 
-# Re-train all learned models, run the validation ablation study + 5-fold CV, and save checkpoints
-python3 train_and_evaluate.py
+# Re-train all learned models run validation ablation study + 5-fold CV, save checkpoint
 
-# Score out-of-fold development predictions with the official scorer
-python3 score.py --references development/labels.jsonl --predictions experiments/oof_predictions.jsonl --output scores.json
-```
+python3 trainandevaluate.py
 
-## Architecture & Data-Driven Adaptations
+# # Score out-of-fold development predictions with the official scorer
 
-### 1. Multi-Pass Bubble Proposal & Two-Pass Line-Graph Double-Bubble Splitting (`src/features.py`)
+Python3 score.py --references development/labels.jsonl --predictions experiments/oof_predictions.jsonl --output scores.json
 
-Running OCR directly on full manga pages fails (`text_order_score = 0.3600`) because screentones, hatching, panel borders, and multi-column layouts corrupt page-level line segmentation. Furthermore, manga frequently uses **compound (double/triple) speech bubbles**—two dialogue lobes connected by a narrow bridge. Passing a compound bubble to OCR as a single crop causes Tesseract to read horizontally across both lobes at once, interleaving words from separate sentences.
+`
 
-To solve this, `src/features.py` implements a three-pass region proposal pipeline:
-- **Pass 1 (Enclosed White Bubbles at Dual Thresholds 230 & 218)**: Extracts connected components of white interiors, fills external contours (`filled`), and locates interior dark strokes (`holes = filled & (~comp_mask) & (img < 212)`).
-- **Two-Pass Line-Graph Lobe Clustering + Unmasked Interior Crops**: Inside each enclosed bubble, dark glyphs are dilated horizontally with a compact `(7, 2)` kernel to form text line segments without bridging the `8–12px` vertical gap between side-by-side lobes in double bubbles. A graph union-find groups lines that stack vertically ($\Delta y \le 22\text{px}$ with $\ge 32\%$ horizontal overlap or $\le 0.36 w_{\max}$ center offset), followed by a second pass that merges single-line horizontal captions and re-attaches small punctuation fragments. Crucially, for each lobe we extract the **unmasked grayscale interior of `filled`** (masking only `filled == 0` outside the bubble and line boxes belonging to *other* lobes in the same bubble) so that touching letters or anti-aliased strokes near the bubble edge are never clipped.
-- **Geometric Ellipsis Recovery**: Nearly 30% of development lines (`514 / 1,753`) contain `...`, and `36` lines are standalone `"..."` bubbles whose `4x4 px` dots are often dropped by standard OCR. We explicitly detect collinear triples of small square/round holes (`2..10 px`) to recover standalone and trailing ellipses.
-- **Pass 2 (Open-Border White-Surround Blocks)** & **Pass 3 (White-on-Black Inverted Bubbles)**: Captures speech bubbles whose borders open into page gutters as well as white-on-black flashback/whisper balloons by inverting dark-background glyph clusters (`255 - img`).
-- **Batched Composite-Strip OCR**: All candidate crops on a page are upscaled $2\times$ (`INTER_CUBIC`) and stacked into a single vertical strip separated by `60px` white bands, requiring only **one** `tesseract --psm 6 tsv` call per page.
+Architecture & Data-Driven Adaptations
 
-### 2. Learned Component 1: Multimodal Story-Text Region Classifier
+# 1. Multi-Pass Bubble Proposal & Two-Pass Line-Graph Double-Bubble Splitting (src/features.py)
 
-From the 80 development sequences (`240` pages), candidate extraction produces `~25` regions per page, of which only `~34%` are true story text and `~66%` are non-story candidates (translated SFX like `SFX: HOOFBEATS` or `KLACK`, page numbers at margins, character introduction boxes like `DAUGHTER OF PRESIDENT OF A SHIP-BUILDING COMPANY`, letters/documents/interfaces, and artwork textures).
+7 Manga are impenetrable to OCR ("textorderscore = 0.3600") when run on entire pages: screentones, hatching, panels, and multi-column page layouts all interfere with the page-level line segmentation;A more serious issue is that manga use compound (double/triple) speech bubbles–two discrete chucks of dialogue whose lobes share a thin waist. When one feeds a compound bubble into OCR as a single crop, Tesseract reads horizontally across both lobes and jams "horizontal" lines from separated sentences into a single, unspeedlized line.
 
-We align candidate regions on the training split to `development/labels.jsonl` using token alignment F1 and edit similarity (`align_candidate_to_gold`) and train a multimodal ensemble (`StoryTextClassifier`):
-- **Features**: 50 dense geometric, topological, panel-relative, border-sharpness, OCR-confidence, and lexical features concatenated with a 24-dim TruncatedSVD projection of character 2–4 gram TF-IDF features.
-- **Models**: A 3-layer **PyTorch Residual MLP (`ResidualMLP`)** with LayerNorm, GELU, Dropout, and class-weighted `BCEWithLogitsLoss` trained via AdamW + CosineAnnealingLR, ensembled with a `HistGradientBoostingClassifier` and balanced `RandomForestClassifier`.
-- **Validation Performance**: Achieves **0.9865 AUROC** (`0.9008 F1`) on held-out validation candidates, lifting `matched_token_coverage` from `0.6919` (heuristic filter) to `0.7669` and `text_order_score` from `0.6857` to `0.6936`.
+To solve this, src/features.py implements a three-pass region proposal pipeline:
 
-### 3. Learned Component 2: Panel-Aware Pairwise Reading-Order Ranker
+- Pass 1 (White bubbles enclosed by 230 & 218): Find connected components of white interior (compmask), fill external contours (filled), find interior dark strokes (holes= filled & (~compmask) & (img<212)).
+- Two-Pass Line-Graph Lobe Clustering + Unmasked Interior Crops Inside the bounding bubble, glyphs are connected linearly using a tight (7, 2) expansion for horizontal offsets in text lines that do not bridge the 8-12px vertical gap between side-by-side lobes in double-bubbles. We then union-graph adjacent lines stack vertically (for >22 px minimum line-overlap, or relative center offset <0.36 w_{max}) with a second pass that merges single-line horizontal captions and re-attaches small segments of punctuation. Most important here, for each lobe we can save the unmasked grayscale interior of filled (only mask out filled==0 outside the bubbled linerates and lineboxes of other lobes in the same bubble) for strokes or letter connections that extend to the bubble boundary.
+- Almost a third of dev lines (514 / 1,753) have ..., and 36 lines stand alone as "..." bubbles whose 4x4 px dots are frequently ignored by even basic OCR. We actively search for collinear triples of small square/round holes (2..10 px) to recover standalone and trailing ellipses.
+- Pass 2 (Open-Border White-Surround Blocks): Detects all speech balloons with page-border-opening contours, in addition to white-on-black flashback/whisper balloons, using an inversion of dark-background 255 - img text blocks. Pass 3 (White-on-Black Inverted Bubbles): Detects all white-on-black inverted bubbles using only the inversion of dark-background text blocks.
+- Every candidate crop on a page is scaled up by 2x (INTER_CUBIC) and pasted as a single vertical strip with 60px white bands in between, resulting in a single tesseract --psm 6 tsv call on the entire page.
 
-We segment pages into panels via recursive XY-cut gutter detection (`detect_panels`) and train a pairwise ranking model (`ReadingOrderRanker`) on ordered bubble pairs `(ci, cj)` from the training split:
-- **Pairwise Features (20 dims)**: Panel index difference, same-panel indicator, same-bubble lobe order, normalized $(\Delta cx, \Delta cy)$, horizontal and vertical overlap ratios, top/bottom clearance, and reading-flow angle.
-- **Tournament Decoding & Honest Comparison**: Lobes sharing an enclosed `parent_id` are grouped in right-to-left `lobe_idx` order first, and pairwise probabilities (`0.8599` pairwise validation accuracy, `0.9064` AUROC) are decoded via exact bitmask dynamic programming ($O(m^2 2^m)$ for $m \le 13$). On the 16-sequence validation split, the learned ranker (`0.6898` `text_order_score`) slightly trails the panel-aware heuristic sort (`0.6936`) by `0.0038` due to occasional irregular multi-column panel layouts where XY-cut gutter detection over-splits panels, while achieving `0.7101` `text_order_score` across 5-fold cross-validation.
+# 2. Learned Component 1: Multimodal Story-Text Region Classifier
 
-### 4. Learned Components 3 & 4: Narration Classifier & Sequence-Wide Speaker Attribution
+Candidate extraction from 80 development sequences (240 pages): ~25 regions/ page, only ~34% true story text, only ~66% non-story candidates (translated SFX: SFX: HOOFBEATS or KLACK, page number at margins, character introduction box DAUGHTER OF PRESIDENT OF A SHIP-BUILDING COMPANY, letter/documents/interface, artwork texture).
 
-- **`NarrationClassifier`**: Trained on ground-truth positive regions using rectangular border sharpness, extent $\frac{\text{area}}{w \cdot h}$, pronoun/tense indicators, and word/character TF-IDF SVD features. Achieves **0.9205 validation AUROC** in separating `NARRATION` captions from character speech/thoughts.
-- **`SpeakerAttributionModel`**: Evaluated under `score.py`, `balanced_joint_f1` matches predicted speaker clusters to reference speakers across all 3 pages via the Hungarian algorithm and penalizes unmatched extra speaker clusters (`extra_speakers` in the denominator `len(gold_speakers) + extra_speakers`).
-  - We train a pairwise co-reference classifier (`pair_gbdt` + `pair_logreg`) on 28 relational features between turn pairs $(u_i, u_j)$ across each 3-page sequence (vertical chain continuation, opposite-side panel turn-taking, $A \to B \to A$ alternating turn parity, 24-dim exterior visual context similarity, font height difference, and shared vocative name mentions like `"HACHIKEN"`, `"PRESIDENT"`, `"DENJI"`).
-  - A sequence-level `Ridge` regression model predicts the expected number of speakers $K \in [2, 4]$, and constrained average-linkage hierarchical clustering partitions all non-narration turns across the 3 pages into speaker IDs (`character1`, `character2`, ...).
+Align candidate regions on the training split to development/labels.jsonl with token alignment F1 and edit similarity (aligncandidateto_gold) and train a multimodal ensemble (Story Text Classifier):
+- Features: Concatenation of 50 dense geometric, topological, panel-relative, border-sharpness, OCR-confidence and lexical features plus a 24-dim TruncatedSVD projection of character 2-4 gram TF-IDF features.
+- Models: 3-layer PyTorch Residual MLP (ResidualMLP) with Layer Norm, GELU, Dropout, class-weighted BCEWith Logits Loss trained via AdamW + CosineAnnealingLR ensembled with a Hist Gradient Boosting Classifier and balanced Random Forest Classifier.
+- F1) on held-out validation candidates, improving matchedtokencoverage from 0.6919 (heuristic filter) to 0.7669, and textorderscore from 0.6857 to 0.6936.
 
-## External Sources & Our Own Contributions
+# 3. Learned Component 2: Panel-Aware Pairwise Reading-Order Ranker
 
-### External Open-Source Tools & Open-Weight Models Cited
-1. **Tesseract OCR v5.5.3 (`eng.traineddata` LSTM Engine)** — Smith, R. (2007), *An Overview of the Tesseract OCR Engine*, ICDAR. Used as our local word recognition engine on segmented composite bubble strips.
-2. **OpenCV (`opencv-python`)** — Bradski, G. (2000), *The OpenCV Library*. Used for connected-component labeling, contour hierarchy analysis, morphological operations, and cubic image upscaling.
-3. **PyTorch (`torch`)** — Paszke et al. (2019), *PyTorch: An Imperative Style, High-Performance Deep Learning Library*, NeurIPS. Used to build and train our custom `ResidualMLP` neural network (`models/story_mlp_weights.pt`).
-4. **Scikit-Learn (`scikit-learn`) & SciPy (`scipy`)** — Pedregosa et al. (2011) & Virtanen et al. (2020). Used for `HistGradientBoostingClassifier`, `RandomForestClassifier`, `LogisticRegression`, `Ridge`, `TfidfVectorizer`, `TruncatedSVD`, and hierarchical linkage clustering.
-5. **Conceptual Prior Work on Manga Understanding** — Matsui et al. (2017), *Sketch-based Manga Retrieval using Manga109 Dataset*, Multimedia Tools and Applications; Sachdeva & Zisserman (2024), *The Manga Whisperer: Automatically Generating Transcriptions for Comics*, CVPR.
+We slice pages into panels using recursive XY-cut gutter detection (detect_panels) and train a pairwise ranking model (Reading Order Ranker) on the ordered bubble pairs (ci, cj) of the training split:
+- Pairwise Features (20 dims): Panel index difference, same-panel indicator, same-bubble-lobe order indicator, normalized $(\Delta cx, \Delta cy)$, horizontal overlap ratio, vertical overlap ratio, top/bottom clearance, reading-flow angle.
+- Tournament decoding & honest comparison: Lobe sets with an enclosed parentid are grouped in right-to-left lobeidx order first, then pairwise probabilities 0.8599 pairwise validation accuracy 0.9064 AUROC are decoded through exact bitmask dynamic programming ($O(m^2 2^m)$ for $m \le 13$). On the 16-sequence validation split the learned ranker 0.6898 textorderscore marginally loses out on the panel-aware heuristic sort 0.6936 by 0.0038 due to occasional irregular multi-column panel layouts when XY-cut gutter detection over-splits panels, while achieving 0.7101 textorderscore` on 5-fold cross-validation.
 
-### Our Own Contributions
-- **Multi-Pass Candidate Proposal & Unmasked Interior Crop Extraction (`src/features.py`)**: Designed a dual-threshold enclosed white-bubble detector that locates interior dark strokes (`holes = filled & ~comp_mask`) and extracts unmasked grayscale crops inside `filled`, eliminating bubble outlines and adjacent artwork clutter without clipping touching characters.
-- **Two-Pass Line-Graph Double-Bubble Splitter (`src/features.py`)**: Developed a custom union-find line-graph clustering algorithm using a `(7, 2)` line kernel that separates side-by-side text columns inside compound/double speech bubbles before OCR and reunites consecutive lobes via `parent_id` post-OCR.
-- **Geometric Ellipsis Detector & Manga Contraction Cleaner (`src/features.py`)**: Built a topological 3-dot collinearity detector to recover standalone `...` balloons (`36` in dev) and trailing ellipses (`29.3%` of dev lines), plus de-hyphenation and manga OCR contraction normalization (`IMA -> I'M A`, `TLL -> I'LL`, `/? -> !?`).
-- **Four Task-Adapted Learned Models (`src/models.py`, `train_and_evaluate.py`)**: Designed, trained, and ablated `StoryTextClassifier`, `ReadingOrderRanker`, `NarrationClassifier`, and `SpeakerAttributionModel` on the sequence-level development splits.
+# 4. Learned Components 3 & 4: Narration Classifier & Sequence-Wide Speaker Attribution
+- Narration Classifier: Learned with ground-truth positive regions and the following features: rectangular border sharpness, extent = area/w * h, pronoun/tense features, and word/character TFIDF SVD features. Validation AUROC of 0.9205 for binary distinction between NARRATION captions and character speech/thoughts.
+- Speaker Attribution Model: Submitted system score.py uses balancedjointf1 which considers all 3 pages, aligns predicted speakers to reference speakers with the Hungarian algorithm and imposes a penalty for extra speakers (extraspeakers in the denominator len(goldspeakers) + extra_speakers).
+ - We learn a pairwise co-reference classifier (pairgbdt + pairlogreg) on 28 relational features between turn pairs $(ui, uj)$ for each 3-page sequence: (vertical chain continuation, opposite-side panel turn-taking, $A \to B \to A$ alternating turn parity, 24-dim exterior visual context similarity, font height difference, shared vocative name mentions like "HACHIKEN", "PRESIDENT", "DENJI").
+ - A sequence-level Ridge regression model estimates the expected number of speakers $K \in [2, 4]$, and constrained average-linkage hierarchical clustering clusters all non-narration turns across the 3 pages into speaker IDs (character1, character2,...).
 
-## Experiments, Comparisons & Ablation Results
+External Sources & Our Own Contributions
 
-We use a deterministic sequence-preserving 80/20 split (`64` train sequences = `192` pages; `16` validation sequences = `48` pages, taking every 5th sequence from `sequences.json` so no pages from the same sequence appear in both train and validation), plus **5-fold cross-validation across all 80 development sequences**.
+# External Open-Source Tools & Open-Weight Models Cited
 
-### Validation Split Ablations (16 Sequences / 48 Pages)
+1. Tesseract OCR v5.5.3 (eng.traineddata' LSTM Engine) - Smith, R. (2007), An Overview of the Tesseract OCR Engine, ICDAR - we used this as our local word recognition engine on the segmented composite bubble strips.
+2. OpenCV (opencv-python) - Bradski, G. (2000), The OpenCV Library. For connected-component labeling, contour hierarchy, morphological operations and cubic upscaling.
+3. PyTorch (torch) - Paszke et al. (2019), PyTorch: An Imperative Style, High-Performance Deep Learning Library, NeurIPS. We used this library to construct and train our own custom ResidualMLP neural network (models/storymlpweights.pt).
+4. Scikit-Learn (scikit-learn) & SciPy (scipy) - Pedregosa et al. (2011) & Virtanen et al. (2020). Utilising the functions Hist Gradient Boosting Classifier, Random Forest Classifier, Logistic Regression, Ridge, Tfidf Vectorizer, TruncatedSVD, and hierarchical linkage clustering.
+5. Related work I: concept level work on understanding Manga Matsui et al. (2017), Sketch-based Manga Retrieval using Manga109 Dataset, Multimedia Tools and Applications; Sachdeva & Zisserman (2024), The Manga Whisperer: Automatically Generating Transcriptions for Comics, CVPR.
 
-| System / Experiment | `text_order_score` | `balanced_joint_f1` | `joint_f1` | `speaker_accuracy_on_matched` | `matched_token_coverage` |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **1. Unmodified Full-Page OCR Baseline** (`tesseract --psm 11`, single speaker) | 0.3600 | 0.1142 | 0.2629 | 0.5889 | 0.3662 |
-| **2. Multi-Pass Bubble Proposal + Heuristic Filter + Heuristic Order** | 0.6857 | 0.1804 | 0.4299 | 0.5436 | 0.6919 |
-| **3. + Learned `StoryTextClassifier` (PyTorch MLP + GBDT + RF)** | **0.6936** | 0.1768 | **0.4383** | 0.5541 | **0.7669** |
-| **4. + Learned `ReadingOrderRanker` (Bitmask DP)** | 0.6898 | 0.1756 | 0.4352 | 0.5530 | 0.7663 |
-| **5. + `NarrationClassifier` + Spatial/Turn K-Means Clustering** | 0.6898 | 0.2714 | 0.3776 | 0.4845 | 0.7663 |
-| **6. Full Adapted Pipeline (`Threshold=0.58`, Learned Co-Ref + Avg Linkage)** | 0.6898 | 0.2912 | 0.4372 | **0.5650** | 0.7663 |
-| **7. Full Adapted Pipeline (`Threshold=0.54`, Learned Co-Ref + Avg Linkage)** | 0.6874 | **0.3127** | 0.4310 | 0.5588 | 0.7671 |
+# Our Own Contributions
 
-### 5-Fold Out-of-Fold Cross-Validation Across All 80 Development Sequences (240 Pages)
+- Multi-Pass Candidate Proposal & Unmasked Interior Crop Extraction (src/features.py) Multi-threshold enclosed white-bubble detector that finds interior dark strokes (holes = filled & ~comp_mask) and extracts unmasked grayscale crops inside filled, removing bubble outlines and nearby artwork clutter with no touching character clipping.
+- Two-Pass Line-Graph Double-Bubble Splitter (src/features.py) Custom union-find line-graph clustering algorithm with a (7, 2) line kernel that splits side-by-side text columns in compound/double speech-bubbles before OCR and recombines consecutive lobes with parent_id after OCR.
+- Geometric Ellipsis Detector & Manga Contraction Cleaner (src/features.py): Designed a topological 3-dot collinearity detector to detect single-glyph ... Balloons (36 in dev) and trailing ellipses (29.3% of dev lines), & dehyphenation & manga OCR contraction normalization (IMA -> I'M A, TLL -> I'LL, /? ->!?)
+- Four Task-Adapted Learned Models (src/models.py, trainandevaluate.py): Visual-specific versions of Story Text Classifier, Reading Order Ranker, Narration Classifier, and Speaker Attribution Model trained on the sequence-level development splits.
 
-| Evaluation Split | `text_order_score` | `balanced_joint_f1` | `joint_f1` | `speaker_accuracy_on_matched` | `matched_token_coverage` |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **5-Fold Cross-Validation (All 80 Sequences)** | **0.7101** | **0.3051** | **0.4588** | **0.5966** | **0.7771** |
+Experiments, Comparisons & Ablation Results
 
-## Critical Analysis: What Worked vs. What Failed
+A deterministic sequence-preserving 80/20 split (64 train sequences = 192 pages, 16 validation sequences = 48 pages, using every 5th sequence from sequences.json so that no pages from the same sequence appear in both train and validation) and 5-fold cross-validation over all 80 development sequences.
 
-1. **What Worked**:
-   - **Enclosed Interior Hole Detection + Unmasked `filled` Crops**: Detecting text via interior holes (`holes = filled & ~comp_mask`) eliminated bubble outlines and panel borders before OCR (`text_order_score` jumped from `0.3600` to `0.6857`), and switching from glyph-masked crops (`crop[sub_lobe_g > 0]`) to unmasked `filled` interior crops with a `(7, 2)` line kernel eliminated character clipping on touching letters (`WAITED`, `TEACHERS`, `COMPLETELY`, `TROUBLE`) and cleanly separated side-by-side double-bubble lobes (`seq_6b18300406fa878f`, `seq_c780ac6d1dbd1242`).
-   - **Multimodal Story-Text Classification**: Combining geometric/topological features with character n-gram TF-IDF in our PyTorch MLP + GBDT + RF ensemble (`0.9865` AUROC) separated story dialogue from SFX captions, page numbers, and character introduction boxes, boosting token coverage by `+7.5%` (`0.6919 -> 0.7669`).
-   - **Narration Classification & Speaker Count Regularization**: Separating `NARRATION` (`0.9205` AUROC) and constraining cluster counts $K \in [2, 4]$ lifted `balanced_joint_f1` from `0.1756` (single-speaker baseline) to `0.2912–0.3127` on validation and `0.3051` on 5-fold CV.
+# Validation Split Ablations ( 16Sequences/48 Pages)
 
-2. **What Failed or Showed Clear Limitations**:
-   - **Weak Pairwise Speaker Co-Reference Discrimination (`Val AUROC = 0.5573`)**: Without explicit bubble-tail keypoint detection or character face re-identification, our pairwise speaker model relies on spatial coordinates, turn distance, coarse exterior intensity patches, and vocative mentions. This only achieves `0.5573` validation AUROC (`0.5966` speaker accuracy on matched tokens in 5-fold CV, `0.3051` `balanced_joint_f1`). In multi-character scenes (such as 5–8 speaker club scenes in *Silver Spoon*) or cross-page camera cuts where characters swap left/right panel sides, one character's dialogue can be split across multiple cluster IDs or two characters on the same side of different panels can be merged into the same cluster.
-   - **Aggressive Turn-Alternation Repulsion (`complete` linkage with hard adjacent-turn repulsion)**: We tested forcing adjacent turns on the same page (`|j - i| == 1`) to have low same-speaker probability (`p_same <= 0.18`) with complete-linkage clustering. That experiment degraded 5-fold CV `balanced_joint_f1` from `0.3051 -> 0.2875` and `speaker_accuracy_on_matched` from `0.5966 -> 0.5343` because manga characters frequently speak **2 to 4 consecutive bubbles** across adjacent panels or monologues (~54% same-speaker adjacent transitions in `development/labels.jsonl`).
-   - **Learned Reading-Order Ranker vs. Panel-Aware Heuristic**: On the 16-sequence validation split, `ReadingOrderRanker` (`0.6898`) did not outperform the simpler panel-aware heuristic sort (`0.6936`) because both rely on the upstream `detect_panels` XY-cut segmentation; when non-rectangular or overlapping panels lack full-width white gutters, pairwise panel-index features inherit the same panel boundary errors.
-   - **Screentone & Spiky Action Balloons**: Bubbles overlaid on heavy radial speed-lines or dense halftone screentones (e.g., *Jujutsu Kaisen* action panels) still fragment under intensity thresholding, accounting for most of the remaining ~22% unrecovered token gap.
+| System / Experiment | textorderscore | balancedjointf1 | jointf1 | speakeraccuracyonmatched | matchedtokencoverage |
+|:--- |:---: |:---: |:---: |:---: |:---: |
+| 1. Same Page OCR Baseline (tesseract --psm 11, single speaker) | 0.3600 | 0.1142 | 0.2629 | 0.5889 | 0.3662 |
+| 2. Multi-Pass Bubble Proposal + Heuristic Filter + Heuristic Order | 0.6857 | 0.1804 | 0.4299 | 0.5436 | 0.6919 |
+| 3. + Learned Story Text Classifier (PyTorch MLP + GBDT + RF) | 0.6936 | 0.1768 | 0.4383 | 0.5541 | 0.7669 |
+| 4. + Learned Reading Order Ranker (Bitmask DP) | 0.6898 | 0.1756 | 0.4352 | 0.5530 | 0.7663 |
+| 5. + Narration Classifier + Spatial/Turn K-Means Clustering | 0.6898 | 0.2714 | 0.3776 | 0.4845 | 0.7663 |
+| 6. Full Adapted Pipeline (Threshold=0.58, Learned Co-Ref + Avg Linkage) | 0.6898 | 0.2912 | 0.4372 | 0.5650 | 0.7663 |
+| 7. Full Adapted Pipeline ('Threshold=0.54', Learned Co-Ref + Avg Linkage) | 0.6874 | 0.3127 | 0.4310 | 0.5588 | 0.7671 |
 
-## What We Would Try Next
+# 5-Fold Out-of-Fold Cross Validation on All 80 Development Sequences (240 Pages)
 
-1. **Bubble-Tail Keypoint Detection + Character Face Re-Identification (Fixing Speaker Attribution)**: Train a lightweight keypoint/object detector to localize speech bubble tails (`tail_tip_xy`) and character faces/bodies within each panel, link each bubble to its pointed character crop within the panel, and cluster character crops across the 3 pages using an open-weight manga character embedding network (e.g., Magi / contrastive ResNet/ViT embeddings). This directly addresses the `0.5573` pairwise speaker AUROC bottleneck when camera angles flip across pages.
-2. **Fine-Tuned Open-Weight Detection & Manga OCR Backbone (YOLOv8 / RT-DETR + TrOCR)**: Fine-tuning an open-weight object detector on speech/thought/narration bounding boxes and replacing Tesseract with a manga-adapted Vision-Encoder-Decoder OCR model (such as Manga-OCR / TrOCR fine-tuned on synthetic manga fonts) would eliminate thresholding failures on translucent, spiky, and screentone-filled balloons.
+| Evaluation Split | textorderscore | balancedjointf1 | jointf1 | speakeraccuracyonmatched | matchedtokencoverage |
+|:--- |:---: |:---: |:---: |:---: |:---: |
+| 5-Fold Cross Validation, all 80 sequences | 0.7101 | 0.3051 | 0.4588 | 0.5966 | 0.7771 |
+
+Critical Analysis: What Worked vs. What Failed
+
+1. What Worked:
+ - Detecting text by interior holes (holes = filled & ~compmask) removed bubble outlines and panel borders prior to OCR (textorderscore up from 0.3600 to 0.6857), unmasked filled interior crops (use compmask, filled instead of glyph-masked crops using crop[sublobeg > 0]) with a (7, 2) line kernel eliminated character clipping on touching characters (WAITED, TEACHERS, COMPLETELY, TROUBLE) while resulting in a distinct double-bubble close side-by-side double-lobe separation (seq6b18300406fa878f, seqc780ac6d1dbd1242).
+ - Applying geometric/topological features with character n-gram TF-IDF in our PyTorch MLP + GBDT + RF ensemble (0.9865 auroc) differentiated the story dialogue text from all SFX caption, page number, and character intro box text (increased token coverage by +7.5% -- 0.6919 to 0.7669)
+ - DifferentiatingNARRATION(0.9205 AUROC) and fixing cluster numbers $K \in [2, 4]$ raised balancedjointf1 from 0.1756 (single-speaker reference) to 0.2912-0.3127 validation and 0.3051 5-fold CV.
+
+2. What Failed or Showed Clear Limitations:
+ - In the absence of explicit bubble-tail keypoint detection or character face re-identification, we use spatial coordinates, turn distance, coarse exterior intensity patches, and vocative mentions. This yields a 0.5573 validation AUROC (0.5966 speaker accuracy on matched tokens in 5-fold CV, 0.3051 balancedjointf1) for multi-character scenes (e.g. 5-8 speaker club scenes in Silver Spoon) or cross-page camera cuts where characters switch left/right panel sides. In these scenarios, one character's speech can span multiple cluster IDs or two characters on the same side of different pages can be co-clustered.
+ - Aggressive Turn-Alternation Repulsion (complete linkage with hard adjacent-turn repulsion): we forced adjacent turns (|j-i|==1) on the same page to have low same-speaker probability (psame<=0.18) with complete-linkage, a hard constraint. This degraded 5-fold CV balancedjointf1 (0.3051 -> 0.2875) and speakeraccuracyonmatched (0.5966 -> 0.5343) because manga characters often have 2-4 in a row in adjacent panels or monologues (~54% same-speaker adjacent transitions in development/labels.jsonl).
+ - Learned Reading-Order Ranker vs. Panel-Aware Heuristic: On the 16-sequence validation split, Reading Order Ranker (0.6898) failed to beat the much more trivial panel-aware heuristic sort (0.6936) since they both depend on the upstream detect_panels XY-cut segmentation and if any non-rectangular or overlapping panels do not have complete-width white gutters, pairwise panel-index features share the same panel boundary errors.
+ - Bubbles present on thick radial speed-lines or tight halftone screentones (see Jujutsu Kaisen panels above) still fall apart when subjected to intensity thresholding. These form the bulk of the ~22% unreclaimed token gap.
+ - What We Would Try Next
+
+1. We will train a small keypoint/object detector to locate speech bubble tails (tailtipxy), locate character faces/bodies in each panel, associate each bubble with its pointed-to character crop in the panel, and cluster character crops across the 3 pages with an open-weight manga character embedding network (e.g. Magi / contrastive Res Net/ViT embeddings). This will directly fix the 0.5573 pairwise speaker AUROC bottleneck for camera angle changes between pages.
+2. Hookwiring Open-Weight Detection & Manga OCR Backbone (YOLOv8 / RT-DETR + TrOCR): Fine-tuning an open-weight object detector on speech/thought/narration bounding boxes and swapping out Tesseract for a manga-specific vision-encoder-decoder OCR model (e.g., Manga-OCR / TrOCR fine-tuned on synthetic manga fonts) would remove the thresholding failures on translucent, spikey, screentone-filled balloons.
